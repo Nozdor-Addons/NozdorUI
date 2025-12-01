@@ -1,5 +1,5 @@
 ## Interface: 30300
-## Title: ! |cffffcc00NozdorUI|r
+## Title: ! |cffffcc00NozdorUI |cffff0000Beta|r|r
 ## Notes: |cffcaf7faИзмененный интерфейс под Dragonflight|r
 ## Version: 2.3
 ## Author: NeticSoul
