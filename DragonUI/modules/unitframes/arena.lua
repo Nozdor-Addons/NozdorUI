@@ -417,9 +417,13 @@ local function StyleArenaEnemyFrame(frameIndex)
     end
 
     -- Hide any class icons created by other addons/scripts
+    -- PERFORMANCE: Cache regions on first call to avoid repeated GetRegions() calls
+    if not frame._nozdorRegionsCache then
+        frame._nozdorRegionsCache = {frame:GetRegions()}
+    end
     -- Search for all textures on the frame that might be class icons
-    for i = 1, frame:GetNumRegions() do
-        local region = select(i, frame:GetRegions())
+    for i = 1, #frame._nozdorRegionsCache do
+        local region = frame._nozdorRegionsCache[i]
         if region and region:GetObjectType() == "Texture" then
             local texture = region:GetTexture()
             if texture and texture:find("UI-Classes-Circles") then
@@ -435,13 +439,21 @@ local function StyleArenaEnemyFrame(frameIndex)
             end
         end
     end
-    
+
+    -- PERFORMANCE: Cache children on first call
+    if not frame._nozdorChildrenCache then
+        frame._nozdorChildrenCache = {frame:GetChildren()}
+    end
     -- Also check child frames
-    for i = 1, frame:GetNumChildren() do
-        local child = select(i, frame:GetChildren())
+    for i = 1, #frame._nozdorChildrenCache do
+        local child = frame._nozdorChildrenCache[i]
         if child then
-            for j = 1, child:GetNumRegions() do
-                local region = select(j, child:GetRegions())
+            -- PERFORMANCE: Cache child regions too
+            if not child._nozdorRegionsCache then
+                child._nozdorRegionsCache = {child:GetRegions()}
+            end
+            for j = 1, #child._nozdorRegionsCache do
+                local region = child._nozdorRegionsCache[j]
                 if region and region:GetObjectType() == "Texture" then
                     local texture = region:GetTexture()
                     if texture and texture:find("UI-Classes-Circles") then
@@ -825,16 +837,22 @@ if not ArenaFrames.petHookInstalled then
 end
 
 -- Also periodically hide any pet frames that might appear
+-- PERFORMANCE: Throttle to 0.2s instead of every frame to prevent freezes
 local petHideFrame = CreateFrame("Frame")
+local petHideElapsed = 0
 petHideFrame:SetScript("OnUpdate", function(self, elapsed)
-    for i = 1, MAX_ARENA_ENEMIES do
-        local petFrame = _G["ArenaEnemyFrame" .. i .. "PetFrame"]
-        if petFrame and petFrame:IsShown() then
-            petFrame:Hide()
-        end
-        local petFrameAlt = _G["ArenaEnemyPetFrame" .. i]
-        if petFrameAlt and petFrameAlt:IsShown() then
-            petFrameAlt:Hide()
+    petHideElapsed = petHideElapsed + elapsed
+    if petHideElapsed >= 0.2 then  -- Only check every 200ms
+        petHideElapsed = 0
+        for i = 1, MAX_ARENA_ENEMIES do
+            local petFrame = _G["ArenaEnemyFrame" .. i .. "PetFrame"]
+            if petFrame and petFrame:IsShown() then
+                petFrame:Hide()
+            end
+            local petFrameAlt = _G["ArenaEnemyPetFrame" .. i]
+            if petFrameAlt and petFrameAlt:IsShown() then
+                petFrameAlt:Hide()
+            end
         end
     end
 end)

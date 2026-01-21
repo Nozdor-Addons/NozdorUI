@@ -1628,6 +1628,10 @@ local function SetupPlayerEvents()
         f:RegisterEvent(event)
     end
 
+    -- PERFORMANCE: Throttle frequent health updates to prevent freezes
+    local lastHealthUpdate = 0
+    local HEALTH_UPDATE_THROTTLE = 0.05  -- 50ms minimum between health updates
+
     -- Event dispatcher
     f:SetScript("OnEvent", function(_, event, ...)
         local handler = handlers[event]
@@ -1642,6 +1646,14 @@ local function SetupPlayerEvents()
         end
 
         if HEALTH_EVENTS[event] then
+            -- PERFORMANCE: Throttle UNIT_HEALTH_FREQUENT specifically
+            if event == "UNIT_HEALTH_FREQUENT" then
+                local now = GetTime()
+                if now - lastHealthUpdate < HEALTH_UPDATE_THROTTLE then
+                    return
+                end
+                lastHealthUpdate = now
+            end
             -- Determine correct unit based on vehicle state
             local currentUnit = (PlayerFrame.state == "vehicle") and "vehicle" or "player"
             UpdateHealthBarColor(PlayerFrameHealthBar, currentUnit)

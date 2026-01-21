@@ -374,6 +374,11 @@ end
         end)
     end
 
+    -- PERFORMANCE: Cache button regions to avoid repeated GetRegions() calls
+    local buttonRegionsCache = {}
+    local pUiMainBarRegionsCache = nil
+    local pUiMainBarChildrenCache = nil
+
     function MainMenuBarMixin:update_main_bar_background()
     local alpha = (addon.db and addon.db.profile and addon.db.profile.buttons and
                       addon.db.profile.buttons.hide_main_bar_background) and 0 or 1
@@ -385,9 +390,12 @@ end
             if button.NormalTexture then
                 button.NormalTexture:SetAlpha(alpha)
             end
-            
-            -- Ocultar también las texturas aplicadas por SetThreeSlice
-            local regions = {button:GetRegions()}
+
+            -- PERFORMANCE: Cache regions on first call, reuse on subsequent calls
+            if not buttonRegionsCache[i] then
+                buttonRegionsCache[i] = {button:GetRegions()}
+            end
+            local regions = buttonRegionsCache[i]
             for j = 1, #regions do
                 local region = regions[j]
                 if region and region:GetObjectType() == "Texture" then
@@ -405,9 +413,13 @@ end
     end
 
     if pUiMainBar then
+        -- PERFORMANCE: Cache pUiMainBar regions on first call
+        if not pUiMainBarRegionsCache then
+            pUiMainBarRegionsCache = {pUiMainBar:GetRegions()}
+        end
         -- hide loose textures within pUiMainBar
-        for i = 1, pUiMainBar:GetNumRegions() do
-            local region = select(i, pUiMainBar:GetRegions())
+        for i = 1, #pUiMainBarRegionsCache do
+            local region = pUiMainBarRegionsCache[i]
             if region and region:GetObjectType() == "Texture" then
                 local texPath = region:GetTexture()
                 if texPath and not string.find(texPath, "ICON") then
@@ -416,9 +428,13 @@ end
             end
         end
 
+        -- PERFORMANCE: Cache pUiMainBar children on first call
+        if not pUiMainBarChildrenCache then
+            pUiMainBarChildrenCache = {pUiMainBar:GetChildren()}
+        end
         -- hide child frame textures with protection for UI elements
-        for i = 1, pUiMainBar:GetNumChildren() do
-            local child = select(i, pUiMainBar:GetChildren())
+        for i = 1, #pUiMainBarChildrenCache do
+            local child = pUiMainBarChildrenCache[i]
             local name = child and child:GetName()
 
             -- protect important UI elements from being hidden
@@ -431,8 +447,12 @@ end
                 "LFGMicroButton" and name ~= "MainMenuMicroButton" and name ~= "HelpMicroButton" and name ~=
                 "MainMenuExpBar" and name ~= "ReputationWatchBar" then
 
-                for j = 1, child:GetNumRegions() do
-                    local region = select(j, child:GetRegions())
+                -- PERFORMANCE: Cache child regions too
+                if not child._nozdorRegionsCache then
+                    child._nozdorRegionsCache = {child:GetRegions()}
+                end
+                for j = 1, #child._nozdorRegionsCache do
+                    local region = child._nozdorRegionsCache[j]
                     if region and region:GetObjectType() == "Texture" then
                         region:SetAlpha(alpha)
                     end

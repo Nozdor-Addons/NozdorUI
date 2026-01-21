@@ -1278,7 +1278,10 @@ local function SetupPartyHooks()
             -- Instead, we rely on event handlers and OnShow/OnHide hooks
             
             -- Set up event listener for GROUP_ROSTER_UPDATE and other relevant events
+            -- PERFORMANCE: Add throttling to prevent multiple rapid calls
             local eventFrame = CreateFrame("Frame")
+            local lastAdjustTime = 0
+            local ADJUST_THROTTLE = 0.2  -- Minimum 200ms between adjustments
             eventFrame:RegisterEvent("GROUP_ROSTER_UPDATE")
             eventFrame:RegisterEvent("RAID_ROSTER_UPDATE")
             eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -1287,9 +1290,14 @@ local function SetupPartyHooks()
                 -- Only adjust if not in raid (party frames adjustment)
                 -- Don't interfere with raid group visibility controls
                 if not IsInRaid() then
-                C_Timer.After(0.1, function()
-                    AdjustPartyFrameForCompactRaidManager()
-                end)
+                    -- PERFORMANCE: Throttle rapid event fires
+                    local now = GetTime()
+                    if now - lastAdjustTime >= ADJUST_THROTTLE then
+                        lastAdjustTime = now
+                        C_Timer.After(0.1, function()
+                            AdjustPartyFrameForCompactRaidManager()
+                        end)
+                    end
                 end
             end)
         end
@@ -1300,24 +1308,21 @@ local function SetupPartyHooks()
     local function TrySetupHook()
         if _G["CompactRaidFrameManager"] then
             SetupCompactRaidFrameManagerHook()
-            -- Also set up a periodic check to ensure it stays hooked
-            local checkFrame = CreateFrame("Frame")
-            local checkCount = 0
-            checkFrame:SetScript("OnUpdate", function(self, elapsed)
-                checkCount = checkCount + 1
-                if checkCount > 30 then -- Check every ~0.5 seconds
-                    checkCount = 0
-                    if _G["CompactRaidFrameManager"] and not _G["CompactRaidFrameManager"].hookedNozdorUI then
-                        SetupCompactRaidFrameManagerHook()
-                    end
-                    AdjustPartyFrameForCompactRaidManager()
+            -- PERFORMANCE: Use C_Timer instead of OnUpdate for periodic checks
+            -- This avoids running code every frame unnecessarily
+            local function PeriodicCheck()
+                if _G["CompactRaidFrameManager"] and not _G["CompactRaidFrameManager"].hookedNozdorUI then
+                    SetupCompactRaidFrameManagerHook()
                 end
-            end)
+                AdjustPartyFrameForCompactRaidManager()
+                C_Timer.After(1.0, PeriodicCheck)  -- Check every 1 second instead of ~0.5s
+            end
+            C_Timer.After(1.0, PeriodicCheck)
             return true
         end
         return false
     end
-    
+
     -- Try immediately
     if not TrySetupHook() then
         -- Wait for CompactRaidFrameManager to be created
@@ -1340,19 +1345,15 @@ local function SetupPartyHooks()
                 self:UnregisterAllEvents()
             end
         end)
-        
-        -- Also try periodically
-        local periodicFrame = CreateFrame("Frame")
-        local periodicCount = 0
-        periodicFrame:SetScript("OnUpdate", function(self, elapsed)
-            periodicCount = periodicCount + 1
-            if periodicCount > 10 then
-                periodicCount = 0
-                if TrySetupHook() then
-                    self:SetScript("OnUpdate", nil)
-                end
+
+        -- PERFORMANCE: Use C_Timer instead of OnUpdate for periodic checks
+        local function TryPeriodicSetup()
+            if TrySetupHook() then
+                return  -- Stop trying once hooked
             end
-        end)
+            C_Timer.After(0.5, TryPeriodicSetup)  -- Try again in 0.5s
+        end
+        C_Timer.After(0.5, TryPeriodicSetup)
     else
         -- Already hooked, check immediately
         C_Timer.After(0.2, AdjustPartyFrameForCompactRaidManager)
@@ -1640,30 +1641,16 @@ portraitUpdateFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 portraitUpdateFrame:RegisterEvent("PLAYER_LOGIN")
 portraitUpdateFrame:RegisterEvent("PARTY_LEADER_CHANGED")
 portraitUpdateFrame:SetScript("OnEvent", function(self, event, unit)
-    -- При входе в игру обновить все портреты несколько раз с задержками
+    -- При входе в игру обновить все портреты с задержками (используя C_Timer вместо OnUpdate)
     if event == "PLAYER_ENTERING_WORLD" or event == "PLAYER_LOGIN" then
         -- Немедленное обновление
         UpdateAllPartyPortraits()
-        
-        -- Обновление с задержками для надежности
-        local updateFrame = CreateFrame("Frame")
-        local attempts = 0
-        updateFrame:SetScript("OnUpdate", function(self, elapsed)
-            attempts = attempts + elapsed
-            if attempts >= 0.3 then
-                attempts = 0
-                UpdateAllPartyPortraits()
-                -- Остановить после нескольких попыток
-                if self.updateCount then
-                    self.updateCount = self.updateCount + 1
-                    if self.updateCount >= 5 then
-                        self:SetScript("OnUpdate", nil)
-                    end
-                else
-                    self.updateCount = 1
-                end
-            end
-        end)
+
+        -- PERFORMANCE: Use C_Timer instead of OnUpdate for delayed updates
+        -- This avoids constant frame updates that can cause freezes
+        C_Timer.After(0.3, UpdateAllPartyPortraits)
+        C_Timer.After(0.6, UpdateAllPartyPortraits)
+        C_Timer.After(1.0, UpdateAllPartyPortraits)
         return
     end
     
@@ -1693,29 +1680,9 @@ portraitUpdateFrame:SetScript("OnEvent", function(self, event, unit)
     end
 end)
 
--- Periodic portrait update to ensure portraits are visible even when far away
-local portraitPeriodicFrame = CreateFrame("Frame")
-local portraitUpdateElapsed = 0
-portraitPeriodicFrame:SetScript("OnUpdate", function(self, elapsed)
-    portraitUpdateElapsed = portraitUpdateElapsed + elapsed
-    -- Update portraits every 0.5 seconds
-    if portraitUpdateElapsed >= 0.5 then
-        portraitUpdateElapsed = 0
-        for i = 1, MAX_PARTY_MEMBERS do
-            local frame = _G['PartyMemberFrame' .. i]
-            if frame then
-                local partyUnit = "party" .. i
-                if UnitExists(partyUnit) then
-                    local portrait = _G[frame:GetName() .. 'Portrait']
-                    if portrait then
-                        -- Try to update portrait - this will work when unit is in range
-                        SetPortraitTexture(portrait, partyUnit)
-                    end
-                end
-            end
-        end
-    end
-end)
+-- PERFORMANCE: Removed periodic OnUpdate for portrait updates
+-- Portraits are now updated only on events (UNIT_PORTRAIT_UPDATE, GROUP_ROSTER_UPDATE, etc.)
+-- This eliminates constant polling that caused freezes during combat/loot
 
 
 -- ===============================================================
