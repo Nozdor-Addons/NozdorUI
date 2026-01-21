@@ -886,7 +886,12 @@ local function OnEvent(self, event, ...)
     elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" or event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" then
         local unit = ...
         if unit == "target" and UnitExists("target") and Module.textSystem then
-            Module.textSystem.update()
+            -- PERFORMANCE: Throttle frequent updates
+            local now = GetTime()
+            if not Module.lastTextUpdate or (now - Module.lastTextUpdate) >= 0.05 then
+                Module.lastTextUpdate = now
+                Module.textSystem.update()
+            end
         end
     end
 

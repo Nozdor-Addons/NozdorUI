@@ -75,6 +75,7 @@ local CastbarModule = {
     states = {},
     frames = {},
     lastRefreshTime = {},
+    spellIconCache = {},  -- PERFORMANCE: Cache spell icons to avoid expensive lookups
     auraCache = {
         target = {
             lastUpdate = 0,
@@ -130,21 +131,36 @@ local function GetSpellIcon(spellName, texture)
     if texture and texture ~= "" then
         return texture
     end
-    
+
     if spellName then
+        -- PERFORMANCE: Check cache first to avoid expensive lookups
+        if CastbarModule.spellIconCache[spellName] then
+            return CastbarModule.spellIconCache[spellName]
+        end
+
         local icon = GetSpellTexture(spellName)
-        if icon then return icon end
-        
-        -- Search in spellbook
+        if icon then
+            CastbarModule.spellIconCache[spellName] = icon
+            return icon
+        end
+
+        -- PERFORMANCE: Only search spellbook once and cache the result
+        -- This is expensive, so we cache even negative results
         for i = 1, 1024 do
-            local name, _, icon = GetSpellInfo(i, BOOKTYPE_SPELL)
+            local name, _, spellIcon = GetSpellInfo(i, BOOKTYPE_SPELL)
             if not name then break end
-            if name == spellName and icon then
-                return icon
+            if name == spellName and spellIcon then
+                CastbarModule.spellIconCache[spellName] = spellIcon
+                return spellIcon
             end
         end
+
+        -- Cache the fallback icon to avoid repeated searches
+        local fallbackIcon = "Interface\\Icons\\INV_Misc_QuestionMark"
+        CastbarModule.spellIconCache[spellName] = fallbackIcon
+        return fallbackIcon
     end
-    
+
     return "Interface\\Icons\\INV_Misc_QuestionMark"
 end
 

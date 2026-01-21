@@ -761,15 +761,25 @@ local function OnEvent(self, event, ...)
     elseif event == "UNIT_HEALTH" or event == "UNIT_MAXHEALTH" then
         local unit = ...
         if unit == "focus" and UnitExists("focus") and Module.textSystem then
-            Module.textSystem.update()
+            -- PERFORMANCE: Throttle frequent updates
+            local now = GetTime()
+            if not Module.lastTextUpdate or (now - Module.lastTextUpdate) >= 0.05 then
+                Module.lastTextUpdate = now
+                Module.textSystem.update()
+            end
         end
     elseif event == "UNIT_POWER_UPDATE" or event == "UNIT_MAXPOWER" then
         local unit = ...
         if unit == "focus" and UnitExists("focus") then
-            -- Actualizar inmediatamente la barra de poder
-            UpdatePowerBar()
-            if Module.textSystem then
-                Module.textSystem.update()
+            -- PERFORMANCE: Throttle frequent updates
+            local now = GetTime()
+            if not Module.lastPowerTextUpdate or (now - Module.lastPowerTextUpdate) >= 0.05 then
+                Module.lastPowerTextUpdate = now
+                -- Actualizar inmediatamente la barra de poder
+                UpdatePowerBar()
+                if Module.textSystem then
+                    Module.textSystem.update()
+                end
             end
         end
     elseif event == "UNIT_DISPLAYPOWER" then
